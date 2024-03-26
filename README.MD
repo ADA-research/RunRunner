@@ -4,8 +4,9 @@ RunRunner is a wrapper library for creating and managing subprocesses and their 
 
 ## Installation
 
-1. ???
-2. Profit
+Installation of the latest version is done using Pip:
+
+pip install RunRunner
 
 ## Usage
 
