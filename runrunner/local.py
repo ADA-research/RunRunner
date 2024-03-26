@@ -33,7 +33,7 @@ import fcntl
 from threading import Lock
 from typing import ClassVar
 
-# runrunner import
+# RunRunner imports
 from runrunner.base import Status
 from runrunner.logger import Log
 from runrunner.timing import Timer

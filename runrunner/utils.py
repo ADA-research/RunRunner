@@ -1,4 +1,4 @@
-'''Common utilities for runrunner.'''
+'''Common utilities for RunRunner.'''
 from __future__ import annotations
 
 from datetime import datetime

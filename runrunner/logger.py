@@ -3,7 +3,7 @@
 from threading import Lock
 
 # name printed before the messages
-NAME = 'runrunner'
+NAME = 'RunRunner'
 
 
 class Log:
