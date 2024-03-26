@@ -1,0 +1,7 @@
+pydantic<2.0a
+pytest
+flake8
+flake8-quotes
+pep8-naming
+flake8-docstrings
+flake8-annotations

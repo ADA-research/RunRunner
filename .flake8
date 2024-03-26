@@ -1,0 +1,24 @@
+[flake8]
+
+max-line-length = 89
+max-doc-length = 89
+indent-size = 4
+statistics = True
+
+multiline-quotes = '''
+docstring-quotes = '''
+
+# Cyclomatic complexity desactivated
+max-complexity = 15 
+
+# Ignore the unused import in __init__.py
+per-file-ignores = __init__.py:F401
+
+# Ignore docstring double quote error
+ignore = 
+    # Conflicts with docstring-quotes rule
+    D300,
+    # Annotating self is clumsy, use Self once using python 3.11
+    ANN101,
+    # Annotating cls is clumsy, use Self once using python 3.11
+    ANN102
