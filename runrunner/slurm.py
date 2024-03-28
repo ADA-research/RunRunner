@@ -58,7 +58,7 @@ def add_to_queue(
         cmd: str | list[str],
         path: str | Path | list[str] | list[Path] | None = None,
         name: str | None = None,
-        parallel_jobs: int = 250,
+        parallel_jobs: int = None,
         dependencies: SlurmRun | list[SlurmRun] | None = None,
         base_dir: str | Path = None,
         sbatch_options: list[str] = None,
@@ -89,7 +89,8 @@ def add_to_queue(
             will be created. If the directory does not exist, it will be created. By
             default, use the current working directory.
         parallel_jobs: int
-            Number of jobs to run in parallel.
+            Number of jobs to run in parallel. If None (default) will be set to the
+            amount of jobs created in this run.
         dependencies: SlurmRun | list[SlurmRun] | None
             The command(s) will wait for all `dependencies` to finish before starting.
         sbatch_options: list[str]
@@ -134,6 +135,8 @@ def add_to_queue(
                 print('[RunRunner] Warning, detected multiple array specifications in '
                       f' SlurmRun Sbatch Options list for job {name}. Selecting first.')
             parallel_jobs = int(array_options[0][1])
+    if parallel_jobs is None:
+        parallel_jobs = len(cmd)
 
     slurm_run = SlurmRun(
         name=name,
@@ -431,7 +434,7 @@ class SlurmRun(pydantic.BaseModel):
                 job.slurm_job_id = f'{self.run_id}_{i}'
                 job.stdout_file = self.filepath(f'-{i:04}.out')
                 job.stderr_file = self.filepath(f'-{i:04}.err')
-            self.to_file()
+            self.to_file(verbose=False)
             Log.info(f'Submitted a run to Slurm (job {self.run_id})')
         return self
 
@@ -461,9 +464,10 @@ class SlurmRun(pydantic.BaseModel):
         data['loaded_from_file'] = True
         return cls.parse_obj(data)
 
-    def to_file(self) -> Path:
+    def to_file(self, verbose=True) -> Path:
         '''Save the run description to a json file. Return a path to the file.'''
-        Log.info(f'Saving run description to file {self.json_filepath}')
+        if verbose:
+            Log.info(f'Saving run description to file {self.json_filepath}')
         with open(self.json_filepath, 'w') as f:
             f.write(self.json())
         return self.json_filepath

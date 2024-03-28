@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='RunRunner',
-    version='0.1.0',
+    version='0.1.1',
     url='https://github.com/thijssnelleman/RunRunner',
     author='Thijs Snelleman',
     author_email='fkt_sparkle@aim.rwth-aachen.de',

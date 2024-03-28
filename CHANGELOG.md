@@ -2,6 +2,12 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.1.1] - 2024/03/28
+
+### Changed
+- The amount of parallel jobs is by default now None and will be calculated by the number of submitted jobs
+- The logging statement for saving .json now has a verbose option to reduce excess logging when submitting a run
+
 ## [0.1.0] - 2024/03/26
 
 ### Added
