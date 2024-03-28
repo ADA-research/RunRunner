@@ -2,7 +2,7 @@
 
 Notable changes to RunRunner are documented in this file.
 
-## [0.1.1] - 2024/03/28
+## [0.1.2] - 2024/03/28
 
 ### Changed
 - The amount of parallel jobs is by default now None and will be calculated by the number of submitted jobs
