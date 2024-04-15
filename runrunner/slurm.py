@@ -193,7 +193,11 @@ class SlurmJob(pydantic.BaseModel):
     stdout_file: Path = None
     stderr_file: Path = None
     slurm_job_id: str = None
-    _slurm_job_details_dict: dict = {}
+    _slurm_job_details: dict = pydantic.PrivateAttr()
+
+    def __init__(self,**data: list) -> None:
+        super().__init__(**data)
+        self._slurm_job_details = {}
 
     @property
     def start_time(self) -> datetime | None:
@@ -216,12 +220,12 @@ class SlurmJob(pydantic.BaseModel):
     @property
     def slurm_job_details(self) -> dict[str, str]:
         '''Retrieve the latest job details from Slurm.'''
-        if 'JobState' in self._slurm_job_details_dict:
+        if 'JobState' in self._slurm_job_details:
             # We can only re-request information on waiting jobs
             current_state = Status.from_slurm_string(
-                self._slurm_job_details_dict['JobState'])
+                self._slurm_job_details['JobState'])
             if current_state not in [Status.RUNNING, Status.WAITING]:
-                return self._slurm_job_details_dict
+                return self._slurm_job_details
 
         scontrol = simple_run(f'scontrol show job {self.slurm_job_id}')
 
@@ -229,16 +233,16 @@ class SlurmJob(pydantic.BaseModel):
             # Scontrol was not (any longer) able to provide information about the job:
             # Therefore, we must deduct what we can
             if self.stderr_file.exists() and os.stat(self.stderr_file).st_size > 0:
-                self._slurm_job_details_dict['JobState'] = 'FAILED'
+                self._slurm_job_details['JobState'] = 'FAILED'
             elif self.stdout_file.exists() and os.stat(self.stdout_file).st_size > 0:
-                self._slurm_job_details_dict['JobState'] = 'COMPLETED'
-            return self._slurm_job_details_dict
+                self._slurm_job_details['JobState'] = 'COMPLETED'
+            return self._slurm_job_details
 
         data = re.findall(_regex_slurm_scontrol_show_job, scontrol.stdout)
         for entry in data:
             key, value = entry.split('=', 1)
-            self._slurm_job_details_dict[key] = value
-        return self._slurm_job_details_dict
+            self._slurm_job_details[key] = value
+        return self._slurm_job_details
 
     @property
     def status(self) -> Status:
@@ -397,8 +401,8 @@ class SlurmRun(pydantic.BaseModel):
 
                 new_name = f'{base_name}-{value+1:0{number_of_digits}}'
 
-                Log.warn('Script file with the same name detected.')
-                Log.warn(f'Using a new unique name: {self.name} -> {new_name}')
+                Log.warn('Script file with the same name detected. '
+                         f'Using a new unique name: {self.name} -> {new_name}')
                 self.name = new_name
             # Save json (not perfect, but somewhat reserve the name)
             self.to_file()
@@ -457,11 +461,18 @@ class SlurmRun(pydantic.BaseModel):
         return self.filepath('.json')
 
     @classmethod
-    def from_file(cls, file: Path) -> SlurmRun:
-        '''Load a SlurmRun from a json file.'''
+    def from_file(cls, file: Path, load_dependencies: bool = False) -> SlurmRun:
+        '''Load a SlurmRun from a json file.
+
+        Args:
+            file: Path to the JSON file to load the object from
+            load_dependencies: If True, the dependecies in the file will also be loaded.
+        '''
         with open(file, 'r') as f:
             data = json.load(f)
         data['loaded_from_file'] = True
+        if not load_dependencies:
+            data["dependencies"] = []
         return cls.parse_obj(data)
 
     def to_file(self, verbose=True) -> Path:

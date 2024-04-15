@@ -2,6 +2,14 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.1.3] - 2024/04/15
+
+### Changed
+- Changed the loading from file to ignore dependencies in the JSON by default to avoid unnecesarry IO.
+
+### Fixed
+- Bug in the SlurmJob object causing instances to share slurm_job_details dict.
+
 ## [0.1.2] - 2024/03/28
 
 ### Changed
