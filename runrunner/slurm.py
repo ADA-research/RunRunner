@@ -151,7 +151,7 @@ def add_to_queue(
     return slurm_run.submit()
 
 
-class SlurmJob(Job, pydantic.BaseModel):
+class SlurmJob(pydantic.BaseModel, Job):
     '''Defines a SlurmJob.
 
     A SlurmJob is a unit of work to be done by Slurm. Usually corresponding to a single
@@ -359,7 +359,7 @@ class SlurmJob(Job, pydantic.BaseModel):
         return self
 
 
-class SlurmRun(Run, pydantic.BaseModel):
+class SlurmRun(pydantic.BaseModel, Run):
     '''A group of jobs that can be executed on a Slurm scheduler.
 
     The jobs must be SlurmJob instances. They can be added at the initialisation
