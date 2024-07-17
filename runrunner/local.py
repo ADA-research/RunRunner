@@ -29,12 +29,11 @@ from datetime import datetime
 from math import ceil
 from math import log10
 from pathlib import Path
-import fcntl
 from threading import Lock
 from typing import ClassVar
 
 # RunRunner imports
-from runrunner.base import Status
+from runrunner.base import Status, Job, Run
 from runrunner.logger import Log
 from runrunner.timing import Timer
 
@@ -45,6 +44,9 @@ def add_to_queue(
     path: str | Path | None = None,
     name: str | None = None,
     parallel_jobs: int = 1,
+    stdout: Path | list[Path] | None = None,
+    stderr: Path | list[Path] | None = None,
+    start_now: bool = True,
     dependencies: LocalJob | list[LocalJob] | LocalRun | list[LocalRun] | None = None,
     **kwargs: str
 ) -> LocalRun:
@@ -61,6 +63,10 @@ def add_to_queue(
         name: str | None
             A name given to the job(s) to ease their identification. If None, a
             (non unique) name will be used based on the command call.
+        stdout: Path | list[Path] | None
+            The path to the standard output file. If None, stdout is send to PIPE
+        stderr: Path | list[Path] | None
+            The path to the standard error file. If None, stderr is send to PIPE
         parallel_jobs: int
             Number of jobs to run in parallel. By default, run on one thread (serial).
         dependencies: LocalRun | list[LocalRun] | LocalJob | list[LocalJob] | None
@@ -88,11 +94,22 @@ def add_to_queue(
         n = ceil(log10(len(cmd) + 1))  # For a correct number of leading 0
         names = [f'{name}_{i+1:0{n}}' for i in range(len(cmd))]
 
+    # Cast outputs to list
+    if not isinstance(stdout, list):
+        stdout = [stdout] * len(cmd)
+    if not isinstance(stderr, list):
+        stderr = [stderr] * len(cmd)
+
+    if len(cmd) != len(stdout) != len(stderr):
+        raise ValueError('`cmd`, `stdout` and `stderr` must have the same length')
+
     return LocalRun(
-        jobs=[LocalJob(cmd=c, path=path, name=n) for c, n in zip(cmd, names)],
+        jobs=[LocalJob(cmd=c, path=path, name=n, stdout=o, stderr=e)
+              for c, n, o, e in zip(cmd, names, stdout, stderr)],
         parallel_jobs=parallel_jobs,
         dependencies=dependencies,
         name=name,
+        start_post_init=start_now
     )
 
 
@@ -112,7 +129,7 @@ def _dependency_as_list(dep: LocalJob | list[LocalJob] | LocalRun | list[LocalRu
         return ret
 
 
-class LocalJob:
+class LocalJob(Job):
     '''A local machine execution of a single command.
 
     Attributes
@@ -125,15 +142,12 @@ class LocalJob:
         The working directory where to execute the command
     name: str
         A (non-unique) name for the LocalRun
-    log_path: str
-        The path to the log where the stdout/stderr of the subprocess will be written.
     '''
 
     base_dir: Path = Path('Tmp')
     cmd: str
     path: Path
     name: str
-    log_path: Path
 
     # Private attributes
     _process: subprocess.Popen = None
@@ -143,6 +157,8 @@ class LocalJob:
                  cmd: str,
                  path: str | Path | None = None,
                  name: str | None = None,
+                 stdout: Path | None = None,
+                 stderr: Path | None = None,
                  ) -> None:
         '''Initialise a new LocalJob.
 
@@ -160,11 +176,16 @@ class LocalJob:
             A (non-unique) name for the LocalJob. If None (default), the name is the
             name of the command to execute. Ex.: /some/path/mycode --flag 12, will have
             the name "mycode".
+        stdout: Path | None
+            The path to the standard output file. If None, stdout is send to PIPE
+        stderr: Path | None
+            The path to the standard error file. If None, stderr is send to PIPE
         '''
         self.cmd = str(cmd)
         self.path = Path() if path is None else Path(path)
         self.name = name or Path(shlex.split(self.cmd)[0]).name
-        self.log_path = (self.base_dir / self.name).with_suffix('.log')
+        self._stdout_target = stdout
+        self._stderr_target = stderr
 
     @property
     def status(self) -> Status:
@@ -180,6 +201,20 @@ class LocalJob:
     def is_error(self) -> bool:
         '''Return true if there was an error during the job, false otherwise.'''
         return self.status == Status.ERROR
+
+    @property
+    def stdout_target(self) -> any:
+        '''Return the standard output stream.'''
+        if self._stdout_target is None:
+            return subprocess.PIPE
+        return self._stdout_target.open('a')
+
+    @property
+    def stderr_target(self) -> any:
+        '''Return the standard error stream.'''
+        if self._stderr_target is None:
+            return subprocess.PIPE
+        return self._stderr_target.open('a')
 
     def run(self) -> LocalJob:
         '''Execute the job.'''
@@ -198,8 +233,8 @@ class LocalJob:
         try:
             self._process = subprocess.Popen(
                 shlex.split(self.cmd),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=self.stdout_target,
+                stderr=self.stderr_target,
                 cwd=self.path,
             )
         except Exception as except_msg:
@@ -235,11 +270,15 @@ class LocalJob:
     @property
     def stdout(self) -> str:
         '''Return the standard output stream.'''
+        if self._stdout_target is not None:
+            return self._stdout_target.read_text()
         return self._process.stdout.read().decode()
 
     @property
     def stderr(self) -> str:
         '''Return the standard error stream.'''
+        if self._stderr_target is not None:
+            return self._stderr_target.read_text()
         return self._process.stderr.read().decode()
 
     @property
@@ -254,22 +293,9 @@ class LocalJob:
         '''Return a simple representation of the job.'''
         return f'JOB {self.name}'
 
-    def write_log(self) -> None:
-        '''Write the subprocess output to the log.'''
-        # Ensure that the process has completed
-        self.wait()
-        output = self.stdout
-        if self.status == Status.ERROR or self.status == Status.KILLED:
-            output = self.stderr
-        if output:
-            with self.log_path.open('a') as fo:
-                fcntl.flock(fo.fileno(), fcntl.LOCK_EX)
-                fo.write(output)
-                fcntl.flock(fo.fileno(), fcntl.LOCK_UN)
-
 
 @dataclass
-class LocalRun:
+class LocalRun(Run):
     '''A collections of jobs.
 
     When created the runs will be added to the execution list
@@ -293,6 +319,7 @@ class LocalRun:
     parallel_jobs: int = 1
     dependencies: list[LocalJob] | None = None
     name: str | None = None
+    start_post_init: bool = True
 
     # Private attribute
     _futures: list[Future] | None = None   # see concurrent.future.Future
@@ -312,7 +339,9 @@ class LocalRun:
                      f'Dependencies: {len(self.dependencies)}.')
         else:
             Log.info(f'{self}: Adding jobs to local queue. Jobs: {len(self)}')
-        self.run_all()
+
+        if self.start_post_init:
+            self.run_all()
 
     @property
     def all_status(self) -> list[Status]:

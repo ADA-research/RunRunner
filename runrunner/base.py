@@ -48,4 +48,100 @@ class Runner(str, Enum):
 
     LOCAL = 'local'
     SLURM = 'slurm'
-    SLURM_RR = 'slurm_rr'  # Temporary until runrunner for Slurm works satisfactorily
+
+
+class Job:
+    '''Abstract class for Job objects.'''
+
+    def __init__(self, **kwargs: str) -> None:
+        '''Initialise a new Job.'''
+        raise NotImplementedError
+
+    @property
+    def status(self) -> Status:
+        '''Return the status of the job. See runrunner.base.Status for statuses.'''
+        return self._status
+
+    @property
+    def is_completed(self) -> bool:
+        '''Return true if the job was completed, false otherwise.'''
+        return self.status == Status.COMPLETED
+
+    @property
+    def is_error(self) -> bool:
+        '''Return true if there was an error during the job, false otherwise.'''
+        return self.status == Status.ERROR
+
+    def run(self) -> Job:
+        '''Execute the job.'''
+        raise NotImplementedError
+
+    def wait(self, timeout: int = None) -> Job:
+        '''Wait for cmd to complete before returning.'''
+        raise NotImplementedError
+
+    def kill(self) -> None:
+        '''Kill the job.'''
+        raise NotImplementedError
+
+    @property
+    def returncode(self) -> int:
+        '''Return the return code of the cmd.'''
+        raise NotImplementedError
+
+    @property
+    def stdout(self) -> str:
+        '''Return the standard output stream.'''
+        raise NotImplementedError
+
+    @property
+    def stderr(self) -> str:
+        '''Return the standard error stream.'''
+        raise NotImplementedError
+
+    @property
+    def pid(self) -> int:
+        '''Return the PID of the job's process.'''
+        raise NotImplementedError
+
+    def write_log(self) -> None:
+        '''Write the subprocess output to the log.'''
+        raise NotImplementedError
+
+
+class Run:
+    '''Abstract class for Run objects.'''
+
+    @property
+    def all_status(self) -> list[Status]:
+        '''Return an iterator over the status of the jobs.'''
+        raise NotImplementedError
+
+    @property
+    def status(self) -> Status:
+        '''Global status of the jobs.'''
+        raise NotImplementedError
+
+    def run_all(self) -> Run:
+        '''Run the jobs of the run object.'''
+        raise NotImplementedError
+
+    def _add_job_to_queue(self, job: Job) -> any:
+        '''Add 'job' to the execution list.'''
+        raise NotImplementedError
+
+    def wait(self, timeout: int = None) -> Run:
+        '''Wait for the run to finish.'''
+        raise NotImplementedError
+
+    def kill(self) -> Run:
+        '''Terminate the run.'''
+        raise NotImplementedError
+
+    def __repr__(self) -> str:
+        '''Return a simple representation of the job.'''
+        raise NotImplementedError
+
+    def __len__(self) -> int:
+        '''Return the number of sub-runs.'''
+        raise NotImplementedError
