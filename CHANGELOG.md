@@ -7,10 +7,8 @@ Notable changes to RunRunner are documented in this file.
 ### Added
 - Shared base class for Local/Slurm Run/Job objects
 - The stdout/stderr for Local runs is now configurable
-
-### Changed
-
-### Fixed
+- Local Jobs can be started at the will of the user with new optional add_to_queue/constructor argument
+- SlurmJobs inherit many new properties from scontrol, and SlurmRuns offer the same options.
 
 
 ## [0.1.3] - 2024/04/15
