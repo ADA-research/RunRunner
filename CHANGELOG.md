@@ -2,6 +2,16 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.1.4] - 2024/07/??
+
+### Added
+- Shared base class for Local/Slurm Run/Job objects
+
+### Changed
+
+### Fixed
+
+
 ## [0.1.3] - 2024/04/15
 
 ### Changed

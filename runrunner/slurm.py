@@ -28,7 +28,7 @@ from pydantic import Field
 from pydantic.datetime_parse import parse_datetime
 
 # RunRunner import
-from runrunner.base import Status
+from runrunner.base import Status, Job, Run
 from runrunner.logger import Log
 from runrunner.utils import simple_run
 from runrunner.utils import quote
@@ -151,7 +151,7 @@ def add_to_queue(
     return slurm_run.submit()
 
 
-class SlurmJob(pydantic.BaseModel):
+class SlurmJob(Job, pydantic.BaseModel):
     '''Defines a SlurmJob.
 
     A SlurmJob is a unit of work to be done by Slurm. Usually corresponding to a single
@@ -205,8 +205,7 @@ class SlurmJob(pydantic.BaseModel):
         datetime_string = self.job_log.get(_START_TIME_)
         if datetime_string is None:
             return None
-        else:
-            return parse_datetime(datetime_string)
+        return parse_datetime(datetime_string)
 
     @property
     def end_time(self) -> datetime | None:
@@ -214,14 +213,13 @@ class SlurmJob(pydantic.BaseModel):
         datetime_string = self.job_log.get(_END_TIME_)
         if datetime_string is None:
             return None
-        else:
-            return parse_datetime(datetime_string)
+        return parse_datetime(datetime_string)
 
     @property
     def slurm_job_details(self) -> dict[str, str]:
         '''Retrieve the latest job details from Slurm.'''
         if 'JobState' in self._slurm_job_details:
-            # We can only re-request information on waiting jobs
+            # We can only re-request information on active jobs
             current_state = Status.from_slurm_string(
                 self._slurm_job_details['JobState'])
             if current_state not in [Status.RUNNING, Status.WAITING]:
@@ -317,7 +315,7 @@ class SlurmJob(pydantic.BaseModel):
         return self
 
 
-class SlurmRun(pydantic.BaseModel):
+class SlurmRun(Run, pydantic.BaseModel):
     '''A group of jobs that can be executed on a Slurm scheduler.
 
     The jobs must be SlurmJob instances. They can be added at the initialisation

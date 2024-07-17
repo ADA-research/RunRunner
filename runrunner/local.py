@@ -34,7 +34,7 @@ from threading import Lock
 from typing import ClassVar
 
 # RunRunner imports
-from runrunner.base import Status
+from runrunner.base import Status, Job, Run
 from runrunner.logger import Log
 from runrunner.timing import Timer
 
@@ -112,7 +112,7 @@ def _dependency_as_list(dep: LocalJob | list[LocalJob] | LocalRun | list[LocalRu
         return ret
 
 
-class LocalJob:
+class LocalJob(Job):
     '''A local machine execution of a single command.
 
     Attributes
@@ -269,7 +269,7 @@ class LocalJob:
 
 
 @dataclass
-class LocalRun:
+class LocalRun(Run):
     '''A collections of jobs.
 
     When created the runs will be added to the execution list
