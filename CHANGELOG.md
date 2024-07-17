@@ -6,6 +6,7 @@ Notable changes to RunRunner are documented in this file.
 
 ### Added
 - Shared base class for Local/Slurm Run/Job objects
+- The stdout/stderr for Local runs is now configurable
 
 ### Changed
 
