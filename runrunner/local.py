@@ -46,6 +46,7 @@ def add_to_queue(
     parallel_jobs: int = 1,
     stdout: Path | list[Path] | None = None,
     stderr: Path | list[Path] | None = None,
+    start_now: bool = True,
     dependencies: LocalJob | list[LocalJob] | LocalRun | list[LocalRun] | None = None,
     **kwargs: str
 ) -> LocalRun:
@@ -108,6 +109,7 @@ def add_to_queue(
         parallel_jobs=parallel_jobs,
         dependencies=dependencies,
         name=name,
+        start_post_init=start_now
     )
 
 
@@ -317,6 +319,7 @@ class LocalRun(Run):
     parallel_jobs: int = 1
     dependencies: list[LocalJob] | None = None
     name: str | None = None
+    start_post_init: bool = True
 
     # Private attribute
     _futures: list[Future] | None = None   # see concurrent.future.Future
@@ -336,7 +339,9 @@ class LocalRun(Run):
                      f'Dependencies: {len(self.dependencies)}.')
         else:
             Log.info(f'{self}: Adding jobs to local queue. Jobs: {len(self)}')
-        self.run_all()
+
+        if self.start_post_init:
+            self.run_all()
 
     @property
     def all_status(self) -> list[Status]:
