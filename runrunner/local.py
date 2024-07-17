@@ -184,7 +184,7 @@ class LocalJob(Job):
         self.cmd = str(cmd)
         self.path = Path() if path is None else Path(path)
         self.name = name or Path(shlex.split(self.cmd)[0]).name
-        self._stdout_target = stdout 
+        self._stdout_target = stdout
         self._stderr_target = stderr
 
     @property
@@ -207,14 +207,14 @@ class LocalJob(Job):
         '''Return the standard output stream.'''
         if self._stdout_target is None:
             return subprocess.PIPE
-        return self._stdout_target.open("a")
+        return self._stdout_target.open('a')
 
     @property
     def stderr_target(self) -> any:
         '''Return the standard error stream.'''
         if self._stderr_target is None:
             return subprocess.PIPE
-        return self._stderr_target.open("a")
+        return self._stderr_target.open('a')
 
     def run(self) -> LocalJob:
         '''Execute the job.'''

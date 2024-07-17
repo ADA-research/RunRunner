@@ -112,7 +112,6 @@ class Job:
 class Run:
     '''Abstract class for Run objects.'''
 
-    #class LocalRun:
     @property
     def all_status(self) -> list[Status]:
         '''Return an iterator over the status of the jobs.'''
@@ -139,7 +138,6 @@ class Run:
         '''Terminate the run.'''
         raise NotImplementedError
 
-    #Class SlumRun
     def __repr__(self) -> str:
         '''Return a simple representation of the job.'''
         raise NotImplementedError
