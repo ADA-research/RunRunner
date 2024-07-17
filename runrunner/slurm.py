@@ -150,6 +150,36 @@ def add_to_queue(
         slurm_run.add_job(cmd=c, working_dir=p, output=o)
     return slurm_run.submit()
 
+def _get_slurm_job_details(slurm_job_id: str,
+                           slurm_job_details: dict,
+                           stdout_file: Path = None,
+                           stderr_file: Path = None) -> dict[str, str]:
+    '''Retrieves the details of a Slurm job.'''
+    if 'JobState' in slurm_job_details:
+        # We can only re-request information on active jobs
+        current_state = Status.from_slurm_string(slurm_job_details['JobState'])
+        if current_state not in [Status.RUNNING, Status.WAITING]:
+            return slurm_job_details
+
+    scontrol = simple_run(f'scontrol show job {slurm_job_id}')
+
+    if scontrol.returncode != os.EX_OK:
+        # Scontrol was not (any longer) able to provide information about the job:
+        # Therefore, we must deduct what we can
+        if (stderr_file is not None and stderr_file.exists()
+            and os.stat(stderr_file).st_size > 0):
+            slurm_job_details['JobState'] = 'FAILED'
+        elif (stdout_file is not None and stdout_file.exists()
+              and os.stat(stdout_file).st_size > 0):
+            slurm_job_details['JobState'] = 'COMPLETED'
+        return slurm_job_details
+
+    data = re.findall(_regex_slurm_scontrol_show_job, scontrol.stdout)
+    for entry in data:
+        key, value = entry.split('=', 1)
+        slurm_job_details[key] = value
+    return slurm_job_details
+
 
 class SlurmJob(pydantic.BaseModel, Job):
     '''Defines a SlurmJob.
@@ -199,34 +229,16 @@ class SlurmJob(pydantic.BaseModel, Job):
         super().__init__(**data)
         self._slurm_job_details = {}
 
+    # Slurm Job Properties
     @property
     def slurm_job_details(self) -> dict[str, str]:
         '''Retrieve the latest job details from Slurm.'''
-        if 'JobState' in self._slurm_job_details:
-            # We can only re-request information on active jobs
-            current_state = Status.from_slurm_string(
-                self._slurm_job_details['JobState'])
-            if current_state not in [Status.RUNNING, Status.WAITING]:
-                return self._slurm_job_details
-
-        scontrol = simple_run(f'scontrol show job {self.slurm_job_id}')
-
-        if scontrol.returncode != os.EX_OK:
-            # Scontrol was not (any longer) able to provide information about the job:
-            # Therefore, we must deduct what we can
-            if self.stderr_file.exists() and os.stat(self.stderr_file).st_size > 0:
-                self._slurm_job_details['JobState'] = 'FAILED'
-            elif self.stdout_file.exists() and os.stat(self.stdout_file).st_size > 0:
-                self._slurm_job_details['JobState'] = 'COMPLETED'
-            return self._slurm_job_details
-
-        data = re.findall(_regex_slurm_scontrol_show_job, scontrol.stdout)
-        for entry in data:
-            key, value = entry.split('=', 1)
-            self._slurm_job_details[key] = value
+        self._slurm_job_details = _get_slurm_job_details(
+            self.slurm_job_id,
+            self._slurm_job_details,
+            self.stdout_file,
+            self.stderr_file)
         return self._slurm_job_details
-
-    # Slurm Job Properties
 
     @property
     def status(self) -> Status:
@@ -235,14 +247,6 @@ class SlurmJob(pydantic.BaseModel, Job):
         if 'JobState' not in job_details:
             return Status.NOTSET
         return Status.from_slurm_string(job_details['JobState'])
-
-    @property
-    def job_id(self) -> int:
-        '''Returns the Slurm Job ID.'''
-        # Job Id does not change with time
-        if "JobId" in self._slurm_job_details:
-            return int(self._slurm_job_details["JobId"])
-        return int(self.slurm_job_details["JobId"])
 
     @property
     def runtime(self) -> str:
@@ -410,6 +414,7 @@ class SlurmRun(pydantic.BaseModel, Run):
     parallel_jobs: int = 1
     submitted: bool = False
     run_id: str = None
+    _slurm_job_details: dict = pydantic.PrivateAttr()
 
     # Not saved in the json
     loaded_from_file: bool = Field(False, exclude=True)
@@ -424,6 +429,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         super().__init__(**data)
         self.base_dir = self.base_dir.expanduser()
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._slurm_job_details = {}
 
         if not self.loaded_from_file:
             # Detect and manage if the name already exists
@@ -530,7 +536,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         '''Get a list of the job statuses.'''
         return [job.status for job in self.jobs]
 
-    @property
+    """@property
     def status(self) -> Status:
         '''Return the status of the run.'''
         status = self.all_status
@@ -545,7 +551,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         elif all(s == Status.COMPLETED for s in status):
             return Status.COMPLETED
         else:
-            return Status.NOTSET
+            return Status.NOTSET"""
 
     def wait(self, timeout: int = None) -> SlurmRun:
         '''Wait for all the jobs in the run to finish.'''
@@ -581,6 +587,73 @@ class SlurmRun(pydantic.BaseModel, Run):
             return 'afterany:' + ':'.join(dep)
         else:
             return ''
+
+    # Slurm Job Properties
+    @property
+    def slurm_job_details(self) -> dict[str, str]:
+        '''Retrieve the latest job details from Slurm.'''
+        self._slurm_job_details = _get_slurm_job_details(
+            self.run_id,
+            self._slurm_job_details)
+        return self._slurm_job_details
+
+    @property
+    def status(self) -> Status:
+        '''Return the Status of the job.'''
+        job_details = self.slurm_job_details
+        if 'JobState' not in job_details:
+            return Status.NOTSET
+        return Status.from_slurm_string(job_details['JobState'])
+
+    @property
+    def runtime(self) -> str:
+        '''Returns the Slurm Job ID.'''
+        return self.slurm_job_details["RunTime"]
+
+    @property
+    def start_time(self) -> datetime:
+        '''Returns the start time of the job.'''
+        return parse_datetime(self.slurm_job_details["StartTime"])
+
+    @property
+    def end_time(self) -> datetime:
+        return parse_datetime(self.slurm_job_details["EndTime"])
+
+    @property
+    def submit_time(self) -> datetime:
+        '''Returns the submit time of the job.'''
+        if "SubmitTime" in self._slurm_job_details:
+            return parse_datetime(self._slurm_job_details["SubmitTime"])
+        return parse_datetime(self.slurm_job_details["SubmitTime"])
+
+    @property
+    def partition(self) -> str:
+        '''Returns the partition of the job.'''
+        if "Partition" in self._slurm_job_details:
+            return self._slurm_job_details["Partition"]
+        return self.slurm_job_details["Partition"]
+
+    @property
+    def requeue(self) -> int:
+        '''Returns the amount of times the job has been requeued.'''
+        return int(self.slurm_job_details["Requeue"])
+
+    @property
+    def restarts(self) -> int:
+        '''Returns the amount of times the job was restarted.'''
+        return int(self.slurm_job_details["Restarts"])
+
+    @property
+    def nodes(self) -> str:
+        '''Returns the node names the job is running on.'''
+        return self.slurm_job_details["NodeList"]
+
+    @property
+    def qos(self) -> str:
+        '''Returns the Quality of Service of the job.'''
+        if "QOS" in self._slurm_job_details:
+            return self._slurm_job_details["QOS"]
+        return self.slurm_job_details["QOS"]
 
     @property
     def sbatch_script(self) -> str:
