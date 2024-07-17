@@ -200,22 +200,6 @@ class SlurmJob(Job, pydantic.BaseModel):
         self._slurm_job_details = {}
 
     @property
-    def start_time(self) -> datetime | None:
-        '''Return the start time of the job. If not started yet return None.'''
-        datetime_string = self.job_log.get(_START_TIME_)
-        if datetime_string is None:
-            return None
-        return parse_datetime(datetime_string)
-
-    @property
-    def end_time(self) -> datetime | None:
-        '''Return the end time of the job. If not finished yet return None.'''
-        datetime_string = self.job_log.get(_END_TIME_)
-        if datetime_string is None:
-            return None
-        return parse_datetime(datetime_string)
-
-    @property
     def slurm_job_details(self) -> dict[str, str]:
         '''Retrieve the latest job details from Slurm.'''
         if 'JobState' in self._slurm_job_details:
@@ -242,6 +226,8 @@ class SlurmJob(Job, pydantic.BaseModel):
             self._slurm_job_details[key] = value
         return self._slurm_job_details
 
+    # Slurm Job Properties
+
     @property
     def status(self) -> Status:
         '''Return the Status of the job.'''
@@ -249,6 +235,64 @@ class SlurmJob(Job, pydantic.BaseModel):
         if 'JobState' not in job_details:
             return Status.NOTSET
         return Status.from_slurm_string(job_details['JobState'])
+
+    @property
+    def job_id(self) -> int:
+        '''Returns the Slurm Job ID.'''
+        # Job Id does not change with time
+        if "JobId" in self._slurm_job_details:
+            return int(self._slurm_job_details["JobId"])
+        return int(self.slurm_job_details["JobId"])
+
+    @property
+    def runtime(self) -> str:
+        '''Returns the Slurm Job ID.'''
+        return self.slurm_job_details["RunTime"]
+
+    @property
+    def start_time(self) -> datetime:
+        '''Returns the start time of the job.'''
+        return parse_datetime(self.slurm_job_details["StartTime"])
+
+    @property
+    def end_time(self) -> datetime:
+        return parse_datetime(self.slurm_job_details["EndTime"])
+
+    @property
+    def submit_time(self) -> datetime:
+        '''Returns the submit time of the job.'''
+        if "SubmitTime" in self._slurm_job_details:
+            return parse_datetime(self._slurm_job_details["SubmitTime"])
+        return parse_datetime(self.slurm_job_details["SubmitTime"])
+
+    @property
+    def partition(self) -> str:
+        '''Returns the partition of the job.'''
+        if "Partition" in self._slurm_job_details:
+            return self._slurm_job_details["Partition"]
+        return self.slurm_job_details["Partition"]
+
+    @property
+    def requeue(self) -> int:
+        '''Returns the amount of times the job has been requeued.'''
+        return int(self.slurm_job_details["Requeue"])
+
+    @property
+    def restarts(self) -> int:
+        '''Returns the amount of times the job was restarted.'''
+        return int(self.slurm_job_details["Restarts"])
+
+    @property
+    def nodes(self) -> str:
+        '''Returns the node names the job is running on.'''
+        return self.slurm_job_details["NodeList"]
+
+    @property
+    def qos(self) -> str:
+        '''Returns the Quality of Service of the job.'''
+        if "QOS" in self._slurm_job_details:
+            return self._slurm_job_details["QOS"]
+        return self.slurm_job_details["QOS"]
 
     @property
     def stdout(self) -> str:
