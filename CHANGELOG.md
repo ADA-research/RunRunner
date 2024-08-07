@@ -2,7 +2,12 @@
 
 Notable changes to RunRunner are documented in this file.
 
-## [0.1.4] - 2024/07/??
+## [0.1.5] 2024/08/07
+
+### Changed
+- When loading a SlurmRun from file, the dependencies are only loaded with only their IDs when load_dependencies is false. Before it was just empty.
+
+## [0.1.4] - 2024/07/17
 
 ### Added
 - Shared base class for Local/Slurm Run/Job objects
