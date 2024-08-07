@@ -426,7 +426,7 @@ class SlurmRun(pydantic.BaseModel, Run):
 
     name: str = Field(default_factory=timestampedname)
     base_dir: Path = Field(default_factory=Path)
-    dependencies: list[SlurmRun] = []
+    dependencies: list[SlurmRun | str] = []
     sbatch_options: list[str] = []
     srun_options: list[str] = []
     jobs: list[SlurmJob] = []
@@ -534,15 +534,20 @@ class SlurmRun(pydantic.BaseModel, Run):
         Args:
             file: Path to the JSON file to load the object from
             load_dependencies: If True, the dependecies in the file will also be loaded.
+                If False, the dependencies will be filled with the run id string.
         '''
         with open(file, 'r') as f:
             data = json.load(f)
         data['loaded_from_file'] = True
         if not load_dependencies:
+            ids = [d['run_id'] for d in data['dependencies']]
             data['dependencies'] = []
-        return cls.parse_obj(data)
+        slurmrun = cls.parse_obj(data)
+        if not load_dependencies:
+            slurmrun.dependencies = ids
+        return slurmrun
 
-    def to_file(self, verbose=True) -> Path:
+    def to_file(self, verbose: bool = True) -> Path:
         '''Save the run description to a json file. Return a path to the file.
 
         Args:
@@ -583,7 +588,7 @@ class SlurmRun(pydantic.BaseModel, Run):
     @property
     def dependency_str(self) -> list[str]:
         '''Return the list of dependency ids.'''
-        dep = [sr.run_id for sr in self.dependencies]
+        dep = [sr.run_id if isinstance(sr, SlurmRun) else sr for sr in self.dependencies]
         if dep:
             return 'afterany:' + ':'.join(dep)
         else:
