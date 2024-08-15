@@ -52,7 +52,7 @@ _regex_slurm_scontrol_show_job = re.compile(r'[^\s]+=[^\s]+')
 # SBATCH options
 # Extract the --array options from a string
 sbatch_option_array_pattern = re.compile('^(-)?a(rray)')
-array_task_key_pattern = re.compile(' ArrayTaskId=(\d+-?\d*%?\d*) ')
+array_task_key_pattern = re.compile(r' ArrayTaskId=(\d+-?\d*%?\d*) ')
 array_task_id_pattern = re.compile('[-%]')
 
 
@@ -114,7 +114,7 @@ def add_to_queue(
         slurm_run: SlurmRun
             An instance of SlurmRun
     '''
-    Log._log_path = log_target
+    Log.set_log_file(log_target)
     # Input check
     if isinstance(cmd, str):
         cmd = [cmd]
@@ -167,7 +167,7 @@ def _get_slurm_job_details(
     Parameters
     ----------
     slurm_job_id: str
-        The job id. 
+        The job id.
     slurm_job_details: dict
         The job details
     stdout_file: Path
@@ -213,11 +213,13 @@ def _get_slurm_job_details(
             elif (stdout is not None and stdout.exists() and os.stat(
                     stdout).st_size > 0):
                 details['JobState'] = 'COMPLETED'
+            else:
+                details['JobState'] = 'UNKNOWN'
         if len(slurm_job_details) == 1:
             return slurm_job_details[0]
         return slurm_job_details
 
-    stdout_split = scontrol.stdout.strip().split("\n\n")
+    stdout_split = scontrol.stdout.strip().split('\n\n')
     for job_stdout in stdout_split:
         data = re.findall(_regex_slurm_scontrol_show_job, job_stdout)
         array_id_str = re.findall(array_task_key_pattern, job_stdout)[0]
@@ -686,7 +688,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         # Retrieve the maximum run time over all jobs
         run_times = [details['RunTime']
                      for details in self.slurm_jobs_details if details != {}]
-        return max(run_times)
+        return max(run_times) if run_times else ''
 
     @property
     def start_time(self) -> datetime:
@@ -701,27 +703,31 @@ class SlurmRun(pydantic.BaseModel, Run):
         '''Returns the end time of the run.'''
         end_times = [parse_datetime(details['EndTime'])
                      for details in self.slurm_jobs_details if details != {}]
-        return max(end_times)
+        return max(end_times) if end_times else None
 
     @property
     def submit_time(self) -> datetime:
         '''Returns the submit time of the run.'''
-        return parse_datetime(self.slurm_run_details['SubmitTime'])
+        return parse_datetime(self.slurm_run_details['SubmitTime']
+                              if 'SubmitTime' in self.slurm_run_details else '')
 
     @property
     def partition(self) -> str:
         '''Returns the partition of the run.'''
-        return self.slurm_run_details['Partition']
+        if 'Partition' in self.slurm_run_details:
+            return self.slurm_run_details['Partition']
+        return ''
 
     @property
     def nodes(self) -> str:
         '''Returns the node names the jobs are running on.'''
-        return ",".join([details['NodeList'] for details in self.slurm_jobs_details])
+        return ','.join([details['NodeList'] for details in self.slurm_jobs_details
+                         if 'NodeList' in details])
 
     @property
     def qos(self) -> str:
         '''Returns the Quality of Service of the run.'''
-        return self.slurm_run_details['QOS']
+        return self.slurm_run_details['QOS'] if 'QOS' in self.slurm_run_details else ''
 
     @property
     def sbatch_script(self) -> str:
