@@ -151,16 +151,17 @@ def add_to_queue(
     return slurm_run.submit()
 
 
-def _get_slurm_job_details(slurm_job_id: str,
-                           slurm_job_details: dict,
-                           stdout_file: Path = None,
-                           stderr_file: Path = None) -> dict[str, str]:
+def _get_slurm_job_details(
+        slurm_job_id: str,
+        slurm_job_details: dict | list[dict],
+        stdout_file: Path | list[Path] = None,
+        stderr_file: Path | list[Path] = None) -> dict[str, str] | list[dict[str, str]]:
     '''Retrieve the details of the given Slurm job id.
 
     Parameters
     ----------
     slurm_job_id: str
-        The job id
+        The job id. 
     slurm_job_details: dict
         The job details
     stdout_file: Path
@@ -169,32 +170,55 @@ def _get_slurm_job_details(slurm_job_id: str,
         The path to the stderr file
     Returns
     -------
-    slurm_job_details: dict
-        The updated job details
+    slurm_job_details: dict or list of dict
+        The updated job details, or a list of the updated job details in case of an array
     '''
-    if 'JobState' in slurm_job_details:
-        # We can only re-request information on active jobs
-        current_state = Status.from_slurm_string(slurm_job_details['JobState'])
-        if current_state not in [Status.RUNNING, Status.WAITING]:
-            return slurm_job_details
+    if isinstance(slurm_job_details, dict):
+        slurm_job_details = [slurm_job_details]
+        stdout_file = [stdout_file]
+        stderr_file = [stderr_file]
+
+    re_request = False
+    for details in slurm_job_details:
+        if 'JobState' in details:
+            # We can only re-request information on active jobs
+            current_state = Status.from_slurm_string(details['JobState'])
+            if current_state in [Status.RUNNING, Status.WAITING]:
+                re_request = True
+                break
+        else:
+            re_request = True
+            break
+
+    if not re_request:
+        if len(slurm_job_details) == 1:
+            return slurm_job_details[0]
+        return slurm_job_details
 
     scontrol = simple_run(f'scontrol show job {slurm_job_id}')
 
     if scontrol.returncode != os.EX_OK:
-        # Scontrol was not (any longer) able to provide information about the job:
-        # Therefore, we must deduct what we can
-        if (stderr_file is not None and stderr_file.exists() and os.stat(
-                stderr_file).st_size > 0):
-            slurm_job_details['JobState'] = 'FAILED'
-        elif (stdout_file is not None and stdout_file.exists() and os.stat(
-                stdout_file).st_size > 0):
-            slurm_job_details['JobState'] = 'COMPLETED'
+        for details, stderr, stdout in zip(slurm_job_details, stderr_file, stdout_file):
+            # Scontrol was not (any longer) able to provide information about the job:
+            # Therefore, we must deduct what we can
+            if (stderr is not None and stderr.exists() and os.stat(
+                    stderr).st_size > 0):
+                details['JobState'] = 'FAILED'
+            elif (stdout is not None and stdout.exists() and os.stat(
+                    stdout).st_size > 0):
+                details['JobState'] = 'COMPLETED'
+        if len(slurm_job_details) == 1:
+            return slurm_job_details[0]
         return slurm_job_details
 
-    data = re.findall(_regex_slurm_scontrol_show_job, scontrol.stdout)
-    for entry in data:
-        key, value = entry.split('=', 1)
-        slurm_job_details[key] = value
+    stdout_split = scontrol.stdout.strip().split("\n\n")
+    for details, job_stdout in zip(slurm_job_details, stdout_split):
+        data = re.findall(_regex_slurm_scontrol_show_job, job_stdout)
+        for entry in data:
+            key, value = entry.split('=', 1)
+            details[key] = value
+    if len(slurm_job_details) == 1:
+        return slurm_job_details[0]
     return slurm_job_details
 
 
@@ -433,7 +457,8 @@ class SlurmRun(pydantic.BaseModel, Run):
     parallel_jobs: int = 1
     submitted: bool = False
     run_id: str = None
-    _slurm_job_details: dict = pydantic.PrivateAttr()
+    _slurm_run_details: dict = pydantic.PrivateAttr()
+    _slurm_jobs_details: list[dict] = pydantic.PrivateAttr()
 
     # Not saved in the json
     loaded_from_file: bool = Field(False, exclude=True)
@@ -448,7 +473,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         super().__init__(**data)
         self.base_dir = self.base_dir.expanduser()
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        self._slurm_job_details = {}
+        self._slurm_jobs_details, self._slurm_run_details = [], {}
 
         if not self.loaded_from_file:
             # Detect and manage if the name already exists
@@ -596,76 +621,93 @@ class SlurmRun(pydantic.BaseModel, Run):
 
     # Slurm Job Properties
     @property
-    def slurm_job_details(self) -> dict[str, str]:
-        '''Retrieve the latest run details from Slurm.'''
-        self._slurm_job_details = _get_slurm_job_details(
-            self.run_id,
-            self._slurm_job_details)
-        return self._slurm_job_details
+    def slurm_jobs_details(self) -> list[dict[str, str]]:
+        '''Retrieve all jobs details from Slurm.'''
+        stdouts = [job.stdout_file for job in self.jobs]
+        stderrs = [job.stderr_file for job in self.jobs]
+        if self._slurm_jobs_details == []:  # First request
+            self._slurm_jobs_details = [{}] * len(self)
+        self._slurm_jobs_details = _get_slurm_job_details(self.run_id,
+                                                          self._slurm_jobs_details,
+                                                          stdouts,
+                                                          stderrs)
+        for index, details in enumerate(self._slurm_jobs_details):
+            self.jobs[index]._slurm_job_details = details
+        return self._slurm_jobs_details
 
     @property
-    def status(self) -> Status:
-        '''Return the Status of the run.'''
-        job_details = self.slurm_job_details
-        if 'JobState' not in job_details:
-            return Status.NOTSET
-        return Status.from_slurm_string(job_details['JobState'])
+    def slurm_run_details(self) -> dict[str, str]:
+        '''Retrieve the latest run details from Slurm.'''
+        # Slurm keeps track of the job details but not per batch
+        if self._slurm_run_details == {}:  # First request
+            self._slurm_run_details = self.slurm_jobs_details[0]
+        return self._slurm_run_details
 
     @property
     def all_status(self) -> list[Status]:
-        '''Get a list of the run's job statuses.'''
-        return [job.status for job in self.jobs]
+        '''Get a list of the job statuses.'''
+        return [Status.from_slurm_string(details['JobState'])
+                if 'JobState' in details else Status.NOTSET
+                for details in self.slurm_jobs_details ]
+
+    @property
+    def status(self) -> Status:
+        '''Return the status of the run.'''
+        status = self.all_status
+        if any(s == Status.ERROR for s in status):
+            return Status.ERROR
+        elif any(s == Status.KILLED for s in status):
+            return Status.KILLED
+        elif any(s == Status.RUNNING for s in status):
+            return Status.RUNNING
+        elif all(s == Status.WAITING for s in status):
+            return Status.WAITING
+        elif all(s == Status.COMPLETED for s in status):
+            return Status.COMPLETED
+        else:
+            return Status.NOTSET
 
     @property
     def runtime(self) -> str:
-        '''Returns the Slurm Job Run Time.'''
-        return self.slurm_job_details['RunTime']
+        '''Returns the run time of the run.'''
+        # Retrieve the maximum run time over all jobs
+        run_times = [details['RunTime'] for details in self.slurm_jobs_details]
+        return max(run_times)
 
     @property
     def start_time(self) -> datetime:
         '''Returns the start time of the run.'''
-        return parse_datetime(self.slurm_job_details['StartTime'])
+        # Retrieves the start of the first job
+        start_times = [parse_datetime(details['StartTime'])
+                       for details in self.slurm_jobs_details]
+        return min(start_times)
 
     @property
     def end_time(self) -> datetime:
         '''Returns the end time of the run.'''
-        return parse_datetime(self.slurm_job_details['EndTime'])
+        end_times = [parse_datetime(details['EndTime'])
+                     for details in self.slurm_jobs_details]
+        return max(end_times)
 
     @property
     def submit_time(self) -> datetime:
         '''Returns the submit time of the run.'''
-        if 'SubmitTime' in self._slurm_job_details:
-            return parse_datetime(self._slurm_job_details['SubmitTime'])
-        return parse_datetime(self.slurm_job_details['SubmitTime'])
+        return parse_datetime(self.slurm_run_details['SubmitTime'])
 
     @property
     def partition(self) -> str:
         '''Returns the partition of the run.'''
-        if 'Partition' in self._slurm_job_details:
-            return self._slurm_job_details['Partition']
-        return self.slurm_job_details['Partition']
-
-    @property
-    def requeue(self) -> int:
-        '''Returns the amount of times the run has been requeued.'''
-        return int(self.slurm_job_details['Requeue'])
-
-    @property
-    def restarts(self) -> int:
-        '''Returns the amount of times the run was restarted.'''
-        return int(self.slurm_job_details['Restarts'])
+        return self.slurm_run_details['Partition']
 
     @property
     def nodes(self) -> str:
-        '''Returns the node names the run is running on.'''
-        return self.slurm_job_details['NodeList']
+        '''Returns the node names the jobs are running on.'''
+        return ",".join([details['NodeList'] for details in self.slurm_jobs_details])
 
     @property
     def qos(self) -> str:
         '''Returns the Quality of Service of the run.'''
-        if 'QOS' in self._slurm_job_details:
-            return self._slurm_job_details['QOS']
-        return self.slurm_job_details['QOS']
+        return self.slurm_run_details['QOS']
 
     @property
     def sbatch_script(self) -> str:
