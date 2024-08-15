@@ -2,6 +2,12 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.1.6] 2024/08/15
+
+### Changed
+- When checking SlurmRun jobs status, this is now requested in one subprocess call instead of N.
+- Logging has been improved and now has file support.
+
 ## [0.1.5] 2024/08/07
 
 ### Changed
