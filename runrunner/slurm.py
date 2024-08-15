@@ -545,7 +545,7 @@ class SlurmRun(pydantic.BaseModel, Run):
                 job.slurm_job_id = f'{self.run_id}_{i}'
                 job.stdout_file = self.filepath(f'-{i:04}.out')
                 job.stderr_file = self.filepath(f'-{i:04}.err')
-            self.to_file(verbose=False)
+            self.to_file()
             Log.info(f'Submitted a run to Slurm (job {self.run_id})')
         return self
 
@@ -587,14 +587,9 @@ class SlurmRun(pydantic.BaseModel, Run):
             slurmrun.dependencies = ids
         return slurmrun
 
-    def to_file(self, verbose: bool = True) -> Path:
-        '''Save the run description to a json file. Return a path to the file.
-
-        Args:
-            verbose: bool. If True, the path to the file is printed.
-        '''
-        if verbose:
-            Log.info(f'Saving run description to file {self.json_filepath}')
+    def to_file(self) -> Path:
+        '''Save the run description to a json file. Return a path to the file.'''
+        Log.info(f'Saving run description to file {self.json_filepath}')
         with open(self.json_filepath, 'w') as f:
             f.write(self.json())
         return self.json_filepath
