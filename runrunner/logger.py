@@ -14,19 +14,33 @@ class Log:
     more standard or versatile.
     '''
 
-    _logger: logging.Logger = logging.getLogger('simple')
+    _logger: logging.Logger = logging.getLogger(NAME)
     _logger.setLevel(logging.INFO)
+    
+    file_format = logging.Formatter(
+        '%(asctime)s %(name)-12s: %(levelname)-8s %(message)s')
+    console_format = logging.Formatter(
+        '%(name)-12s: %(levelname)-8s %(message)s'
+    )
     _print_lock = Lock()
 
     @classmethod
     def set_log_file(cls, path: Path = None) -> None:
         '''Set the log file.'''
         cls._logger.handlers.clear()
+        console = logging.StreamHandler()
+        console.setFormatter(cls.console_format)
         if path is None:
             # Only write to terminal
             cls._logger.addHandler(logging.StreamHandler())
             return
-        cls._logger.addHandler(logging.FileHandler(path))
+        # Only show error messages on the console
+        console.setLevel(logging.ERROR)
+        cls._logger.addHandler(console)
+
+        file = logging.FileHandler(path)
+        file.setFormatter(cls.file_format)
+        cls._logger.addHandler(file)
 
     @classmethod
     def error(cls, txt: str) -> None:
