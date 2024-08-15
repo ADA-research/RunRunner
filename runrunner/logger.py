@@ -1,5 +1,5 @@
 '''Logger for runrunner.'''
-
+from pathlib import Path
 from threading import Lock
 
 # name printed before the messages
@@ -14,7 +14,7 @@ class Log:
     '''
 
     _print_lock = Lock()
-
+    _log_path = Path()
     @classmethod
     def error(cls, txt: str) -> None:
         '''Print an error.'''

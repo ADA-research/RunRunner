@@ -52,6 +52,8 @@ _regex_slurm_scontrol_show_job = re.compile(r'[^\s]+=[^\s]+')
 # SBATCH options
 # Extract the --array options from a string
 sbatch_option_array_pattern = re.compile('^(-)?a(rray)')
+array_task_key_pattern = re.compile(' ArrayTaskId=(\d+-?\d*%?\d*) ')
+array_task_id_pattern = re.compile('[-%]')
 
 
 def add_to_queue(
@@ -64,6 +66,7 @@ def add_to_queue(
         sbatch_options: list[str] = None,
         srun_options: list[str] = None,
         output_path: str | Path | list[str] | list[Path] | None = None,
+        log_target: Path = None,
         **kwargs: str
 
 ) -> SlurmRun:
@@ -104,11 +107,14 @@ def add_to_queue(
             parameters is a single value, this value will be used for all the cmd. If
             path is a list, the length of the list must be the same as the number of
             commands. If None, use the default Slurm .out file of the sbatch script.
+        log_target:
+            The file to write the log statements to. If None, will write to terminal.
     Returns
     -------
         slurm_run: SlurmRun
             An instance of SlurmRun
     '''
+    Log._log_path = log_target
     # Input check
     if isinstance(cmd, str):
         cmd = [cmd]
@@ -212,11 +218,18 @@ def _get_slurm_job_details(
         return slurm_job_details
 
     stdout_split = scontrol.stdout.strip().split("\n\n")
-    for details, job_stdout in zip(slurm_job_details, stdout_split):
+    for job_stdout in stdout_split:
         data = re.findall(_regex_slurm_scontrol_show_job, job_stdout)
+        array_id_str = re.findall(array_task_key_pattern, job_stdout)[0]
+        array_ids = [int(array_id_str)] if array_id_str.isdigit() else [0]
+        if len(stdout_split) != 0 and not array_id_str.isdigit():
+            # Its a sequence of jobs that has not started yet
+            first, last, _ = re.split(array_task_id_pattern, array_id_str, maxsplit=2)
+            array_ids = list(range(int(first), int(last) + 1))
         for entry in data:
             key, value = entry.split('=', 1)
-            details[key] = value
+            for array_id in array_ids:
+                slurm_job_details[array_id][key] = value
     if len(slurm_job_details) == 1:
         return slurm_job_details[0]
     return slurm_job_details
@@ -626,7 +639,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         stdouts = [job.stdout_file for job in self.jobs]
         stderrs = [job.stderr_file for job in self.jobs]
         if self._slurm_jobs_details == []:  # First request
-            self._slurm_jobs_details = [{}] * len(self)
+            self._slurm_jobs_details = [{} for _ in range(len(self))]
         self._slurm_jobs_details = _get_slurm_job_details(self.run_id,
                                                           self._slurm_jobs_details,
                                                           stdouts,
@@ -648,7 +661,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         '''Get a list of the job statuses.'''
         return [Status.from_slurm_string(details['JobState'])
                 if 'JobState' in details else Status.NOTSET
-                for details in self.slurm_jobs_details ]
+                for details in self.slurm_jobs_details if details != {}]
 
     @property
     def status(self) -> Status:
@@ -671,7 +684,8 @@ class SlurmRun(pydantic.BaseModel, Run):
     def runtime(self) -> str:
         '''Returns the run time of the run.'''
         # Retrieve the maximum run time over all jobs
-        run_times = [details['RunTime'] for details in self.slurm_jobs_details]
+        run_times = [details['RunTime']
+                     for details in self.slurm_jobs_details if details != {}]
         return max(run_times)
 
     @property
@@ -679,14 +693,14 @@ class SlurmRun(pydantic.BaseModel, Run):
         '''Returns the start time of the run.'''
         # Retrieves the start of the first job
         start_times = [parse_datetime(details['StartTime'])
-                       for details in self.slurm_jobs_details]
+                       for details in self.slurm_jobs_details if details != {}]
         return min(start_times)
 
     @property
     def end_time(self) -> datetime:
         '''Returns the end time of the run.'''
         end_times = [parse_datetime(details['EndTime'])
-                     for details in self.slurm_jobs_details]
+                     for details in self.slurm_jobs_details if details != {}]
         return max(end_times)
 
     @property
