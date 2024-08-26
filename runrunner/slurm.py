@@ -223,7 +223,8 @@ def _get_slurm_job_details(
     for job_stdout in stdout_split:
         data = re.findall(_regex_slurm_scontrol_show_job, job_stdout)
         array_id_str = re.findall(array_task_key_pattern, job_stdout)[0]
-        array_ids = [int(array_id_str)] if array_id_str.isdigit() else [0]
+        array_ids = ([int(array_id_str)]
+                     if array_id_str.isdigit() and len(stdout_split) > 1 else [0])
         if len(stdout_split) != 0 and not array_id_str.isdigit():
             # Its a sequence of jobs that has not started yet
             first, last, _ = re.split(array_task_id_pattern, array_id_str, maxsplit=2)
