@@ -642,6 +642,8 @@ class SlurmRun(pydantic.BaseModel, Run):
                                                           self._slurm_jobs_details,
                                                           stdouts,
                                                           stderrs)
+        if not isinstance(self._slurm_jobs_details, list):
+            self._slurm_jobs_details = [self._slurm_jobs_details]
         for index, details in enumerate(self._slurm_jobs_details):
             self.jobs[index]._slurm_job_details = details
         return self._slurm_jobs_details

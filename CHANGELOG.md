@@ -2,7 +2,7 @@
 
 Notable changes to RunRunner are documented in this file.
 
-## [0.1.6.1] 2024/08/26
+## [0.1.6.2] 2024/08/26
 
 ### Fixed
 - Minor release for a bugfix regarding the retrieval of slurm job status for a single job
