@@ -66,7 +66,6 @@ def add_to_queue(
         sbatch_options: list[str] = None,
         srun_options: list[str] = None,
         output_path: str | Path | list[str] | list[Path] | None = None,
-        log_target: Path = None,
         **kwargs: str
 
 ) -> SlurmRun:
@@ -107,14 +106,11 @@ def add_to_queue(
             parameters is a single value, this value will be used for all the cmd. If
             path is a list, the length of the list must be the same as the number of
             commands. If None, use the default Slurm .out file of the sbatch script.
-        log_target:
-            The file to write the log statements to. If None, will write to terminal.
     Returns
     -------
         slurm_run: SlurmRun
             An instance of SlurmRun
     '''
-    Log.set_log_file(log_target)
     # Input check
     if isinstance(cmd, str):
         cmd = [cmd]
@@ -509,7 +505,7 @@ class SlurmRun(pydantic.BaseModel, Run):
 
                 new_name = f'{base_name}-{value+1:0{number_of_digits}}'
 
-                Log.warn('Script file with the same name detected. '
+                Log.info('Script file with the same name detected. '
                          f'Using a new unique name: {self.name} -> {new_name}')
                 self.name = new_name
             # Save json (not perfect, but somewhat reserve the name)
