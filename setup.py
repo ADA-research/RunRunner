@@ -4,7 +4,7 @@ import os
 
 setup(
     name='RunRunner',
-    version='0.1.6.3',
+    version='0.1.6.4',
     url='https://github.com/thijssnelleman/RunRunner',
     author='Thijs Snelleman',
     author_email='fkt_sparkle@aim.rwth-aachen.de',
