@@ -2,6 +2,18 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.1.7] 2024/10/09
+
+### Fixed
+- SlurmRun.kill no longer kills each job and instead kills the whole batch at once
+
+### Changed
+- SlurmRun now extracts latest information from the JSON job data instead for improved stability
+- A SlurmRun is considered waiting when one of its jobs is waiting instead of all jobs (Condition that no jobs are, killed, crashed or running)
+
+### Removed
+- SlurmJobs no longer have the requeues property
+
 ## [0.1.6.4] 2024/08/27
 
 ### Fixed
