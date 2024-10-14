@@ -2,6 +2,11 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.1.7.1] 2024/10/14
+
+### Fixed
+- Bug for SlurmJobs setting state to completed when actually the job is running
+
 ## [0.1.7] 2024/10/09
 
 ### Fixed
