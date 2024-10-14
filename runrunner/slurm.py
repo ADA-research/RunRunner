@@ -216,9 +216,10 @@ class SlurmJob(pydantic.BaseModel, Job):
             if (self.stderr_file is not None and self.stderr_file.exists() and os.stat(
                     self.stderr_file).st_size > 0):
                 return Status.ERROR
-            elif (self.stdout_file is not None and self.stdout_file.exists() and os.stat(
-                    self.stdout_file).st_size > 0):
-                return Status.COMPLETED
+            if self.stdout_file is not None and self.stdout_file.exists():
+                lines = self.stdout_file.open().readlines()
+                if len(lines) > 2 and lines[-2].startswith('End time: '):
+                    return Status.COMPLETED
             return Status.NOTSET
         return Status.from_slurm_string(self.job_state)
 
@@ -279,9 +280,7 @@ class SlurmJob(pydantic.BaseModel, Job):
     def nodes(self) -> str:
         '''Return the node names the job is running on.'''
         if self.job_nodes is not None:
-            return ' '.join([
-                alloc_node['nodename']
-                for alloc_node in self.job_nodes])
+            return self.job_nodes
         return ''
 
     @property
@@ -366,7 +365,9 @@ class SlurmJob(pydantic.BaseModel, Job):
         self.job_partition = job_info['partition']
         if ('job_resources' in job_info and 'allocated_nodes'
             in job_info['job_resources']):
-            self.job_nodes = job_info['job_resources']['allocated_nodes']
+            self.job_nodes = ','.join(
+                node_info['nodename'] 
+                for node_info in job_info['job_resources']['allocated_nodes'])
         return self
 
 
