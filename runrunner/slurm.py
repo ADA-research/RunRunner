@@ -215,11 +215,14 @@ class SlurmJob(pydantic.BaseModel, Job):
         if self.job_state is None:
             if (self.stderr_file is not None and self.stderr_file.exists() and os.stat(
                     self.stderr_file).st_size > 0):
+                self.job_state = 'FAILED'
                 return Status.ERROR
-            if self.stdout_file is not None and self.stdout_file.exists():
+            elif self.stdout_file is not None and self.stdout_file.exists():
                 lines = self.stdout_file.open().readlines()
-                if len(lines) > 2 and lines[-2].startswith('End time: '):
+                if len(lines) > 0 and lines[-1].startswith('End time: '):
+                    self.job_state = 'COMPLETED'
                     return Status.COMPLETED
+            # TODO: There are more edge cases here to handle but we don't have any examples yet
             return Status.NOTSET
         return Status.from_slurm_string(self.job_state)
 
@@ -230,11 +233,11 @@ class SlurmJob(pydantic.BaseModel, Job):
         if self.status == Status.WAITING:
             return str(timedelta(0))  # Job hasn't started yet
         if self.start_time is None or self.end_time is None:
-            return None
+            return None  # Job has invalid data to calculate runtime
         if self.status == Status.RUNNING:
             # When the Job is running, end time is the latest possible end time
-            return str(datetime.now() - self.start_time)
-        return str(self.start_time - self.end_time)
+            return str(datetime.now() - self.start_time)[:-4]  # Decimals
+        return str(self.end_time - self.start_time)
 
     @property
     def start_time(self) -> datetime:
@@ -525,7 +528,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         slurmrun = cls.parse_obj(data)
         if not load_dependencies:
             slurmrun.dependencies = ids
-        slurmrun.get_slurm_job_details()
+        slurmrun.get_latest_job_details()
         return slurmrun
 
     def to_file(self) -> Path:
@@ -561,13 +564,23 @@ class SlurmRun(pydantic.BaseModel, Run):
             f.write(self.sbatch_script)
         return self.script_filepath
 
-    def get_slurm_job_details(self) -> None:
+    def get_latest_job_details(self) -> None:
         '''Retrieve the latest job details from Slurm.'''
-        if all(job.status not in [Status.RUNNING, Status.WAITING, Status.NOTSET]
-               for job in self.jobs):  # No more jobs running
+        if all([job.status not in [Status.RUNNING, Status.WAITING, Status.NOTSET]
+               for job in self.jobs]):  # No more jobs running
             return
         scontrol = simple_run(f'scontrol show job {self.run_id} --json')
         job_details = json.loads(scontrol.stdout)['jobs']
+        if len(job_details) == 0:
+            # Slurm job info no longer available, try to reload if necessary
+            changes = False
+            for job in self.jobs:
+                if job.status in [Status.RUNNING, Status.WAITING, Status.NOTSET]:
+                    job.job_state = None
+                    changes = True
+            if changes:
+                self.to_file()
+            return
         for job_info in job_details:
             job_id = job_info['array_task_id']['number']
             self.jobs[job_id].update(job_info)
@@ -597,7 +610,6 @@ class SlurmRun(pydantic.BaseModel, Run):
     @property
     def all_status(self) -> list[Status]:
         '''Get a list of the job statuses.'''
-        self.get_slurm_job_details()
         return [job.status for job in self.jobs]
 
     @property

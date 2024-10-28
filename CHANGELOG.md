@@ -2,6 +2,13 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.1.8] 2024/10/28
+
+### Fixed
+- SlurmJob Runtime computation when job is finished is now correct. Time of running jobs is formatted to be 2 decimals at maximum.
+- SlurmRun no longer automatically refreshes its jobs details upon fetching its status, now instead this has to be done manually by the user by running .get_latest_job_details. Does still happen upon loading a a run from file.
+- Better support for determining SlurmJob status for slurm ID's that can no longer be found in the Slurm DB
+
 ## [0.1.7.1] 2024/10/14
 
 ### Fixed

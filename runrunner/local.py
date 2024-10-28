@@ -193,6 +193,11 @@ class LocalJob(Job):
         return self._status
 
     @property
+    def is_finished(self) -> bool:
+        '''Return true if the job is finished, false otherwise.'''
+        return self.status in [Status.COMPLETED, Status.ERROR, Status.KILLED]
+
+    @property
     def is_completed(self) -> bool:
         '''Return true if the job was completed, false otherwise.'''
         return self.status == Status.COMPLETED
@@ -250,6 +255,9 @@ class LocalJob(Job):
 
     def wait(self, timeout: int = None) -> LocalJob:
         '''Wait for cmd to complete before returning.'''
+        if self._process is None:
+            Log.info(f'{self}: Cannot wait for an unstarted Job. Skipped.')
+            return self
         self._process.wait(timeout=timeout)
         if self._process.returncode == os.EX_OK:
             self._status = Status.COMPLETED
@@ -383,7 +391,7 @@ class LocalRun(Run):
         The jobs will be added either to the queue to be executed as soon as possible
         or on a wait list, depending on the status of the dependencies of the run.
         '''
-        if all([run.is_completed for run in self.dependencies]):
+        if all([run.is_finished for run in self.dependencies]):
             # All dependencies are completed
 
             if self._futures is not None:
