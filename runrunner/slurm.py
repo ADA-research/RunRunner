@@ -61,7 +61,6 @@ def add_to_queue(
         name: str | None = None,
         parallel_jobs: int = None,
         dependencies: SlurmRun | list[SlurmRun] | None = None,
-        job_dependencies: list[SlurmRun | SlurmJob | None] | None = None,
         base_dir: str | Path = None,
         sbatch_options: list[str] = None,
         srun_options: list[str] = None,
@@ -95,9 +94,6 @@ def add_to_queue(
             amount of jobs created in this run.
         dependencies: SlurmRun | list[SlurmRun] | None
             The command(s) will wait for all `dependencies` to finish before starting.
-        job_dependencies: list[SlurmJob | SlurmRun | None] | None
-            Per SlurmJob dependencies of the SlurmRun. Assumes length of cmd.
-            If some jobs should be without dependency, leave None instead.
         sbatch_options: list[str]
             A list of options that will be used in the sbatch scripts.
             Example: ['--mem-per-cpu=3000', '--exclude=ethnode[23-30]']
@@ -129,9 +125,6 @@ def add_to_queue(
                   ' or equal to the number of commands.')
     if isinstance(dependencies, SlurmRun):
         dependencies = [dependencies]
-    if job_dependencies and len(job_dependencies) != len(cmd):
-        Log.error('The number of job dependencies should be equal to the number of '
-                  'commands.')
 
     # Verify the SBATCH options -- Allow user to override
     if sbatch_options is not None:
@@ -140,8 +133,8 @@ def add_to_queue(
                          if re.search(r'%(\d+)', option) is not None]
         if len(array_options) > 0:
             if len(array_options) > 1:
-                Log.warn('Detected multiple array specifications in SlurmRun SBATCH '
-                         f'Options list for job {name}. Selecting first.')
+                Log.warn('Detected multiple array specifications in '
+                      f' SlurmRun Sbatch Options list for job {name}. Selecting first.')
             parallel_jobs = int(array_options[0][1])
     if parallel_jobs is None:
         parallel_jobs = len(cmd)
@@ -150,7 +143,6 @@ def add_to_queue(
         name=name,
         base_dir=base_dir,
         dependencies=dependencies or [],
-        job_dependencies=job_dependencies or [],
         parallel_jobs=parallel_jobs,
         sbatch_options=sbatch_options or [],
         srun_options=srun_options or []
@@ -194,8 +186,6 @@ class SlurmJob(pydantic.BaseModel, Job):
     slurm_job_id: str
         The Slurm ID of the job. This value is set by SlurmRun when
         the jobs are submitted to Slurm.
-    slurm_job_dependencies: list[SlurmRun | SlurmJob]
-        The list of SlurmRun or SlurmJob that this job wait on before starting.
     '''
 
     cmd: str
@@ -204,7 +194,6 @@ class SlurmJob(pydantic.BaseModel, Job):
     stdout_file: Path = None
     stderr_file: Path = None
     slurm_job_id: str = None
-    slurm_job_dependencies: list[SlurmRun | SlurmJob] = None
 
     # Properties derived by SlurmRun parent
     job_state: str = None
@@ -234,8 +223,7 @@ class SlurmJob(pydantic.BaseModel, Job):
                     if len(lines) > 0 and lines[-1].startswith('End time: '):
                         self.job_state = 'COMPLETED'
                         return Status.COMPLETED
-            # TODO: There are more edge cases here to handle
-            # but we don't have any examples yet
+            # TODO: There are more edge cases here to handle but we don't have any examples yet
             return Status.NOTSET
         return Status.from_slurm_string(self.job_state)
 
@@ -305,19 +293,6 @@ class SlurmJob(pydantic.BaseModel, Job):
         if self.job_qos is not None:
             return self.job_qos
         return ''
-
-    @property
-    def dependencies_str(self) -> str:
-        '''Return the list of dependencies ids.'''
-        ids = []
-        for d in self.slurm_job_dependencies:
-            if isinstance(d, SlurmRun):
-                ids.append(d.run_id)
-            elif isinstance(d, SlurmJob):
-                ids.append(d.slurm_job_id)
-            elif isinstance(d, str):
-                ids.append(d)
-        return ','.join(ids)
 
     @property
     def stdout(self) -> str:
@@ -393,9 +368,9 @@ class SlurmJob(pydantic.BaseModel, Job):
         self.job_qos = job_info['qos']
         self.job_partition = job_info['partition']
         if ('job_resources' in job_info and 'allocated_nodes'
-                in job_info['job_resources']):
+            in job_info['job_resources']):
             self.job_nodes = ','.join(
-                node_info['nodename']
+                node_info['nodename'] 
                 for node_info in job_info['job_resources']['allocated_nodes'])
         return self
 
@@ -444,7 +419,7 @@ class SlurmRun(pydantic.BaseModel, Run):
 
     name: str = Field(default_factory=timestampedname)
     base_dir: Path = Field(default_factory=Path)
-    dependencies: list[SlurmRun | list[SlurmRun] | str] = []
+    dependencies: list[SlurmRun | str] = []
     sbatch_options: list[str] = []
     srun_options: list[str] = []
     jobs: list[SlurmJob] = []
@@ -490,15 +465,13 @@ class SlurmRun(pydantic.BaseModel, Run):
             # Save json (not perfect, but somewhat reserve the name)
             self.to_file()
 
-    def add_job(self, cmd: str, working_dir: Path = None, output: Path = None,
-                job_dependencies: list[SlurmRun | SlurmJob] = []) -> None:
+    def add_job(self, cmd: str, working_dir: Path = None, output: Path = None) -> None:
         '''Add a job to the list of jobs. The name is created automatically.'''
         self.jobs.append(SlurmJob(
             cmd=cmd,
             working_dir=working_dir or self.base_dir,
             output_file=output,
-            name=self.name + f'-{len(self.jobs):04}'),
-            job_dependencies=job_dependencies)
+            name=self.name + f'-{len(self.jobs):04}'))
 
     def submit(self) -> SlurmRun:
         '''Submit the run to the scheduler.'''
@@ -628,8 +601,7 @@ class SlurmRun(pydantic.BaseModel, Run):
     @property
     def dependency_str(self) -> list[str]:
         '''Return the list of dependency ids.'''
-        dep = [sr.run_id if isinstance(sr, SlurmRun)
-               else sr for sr in self.dependencies]
+        dep = [sr.run_id if isinstance(sr, SlurmRun) else sr for sr in self.dependencies]
         if dep:
             return 'afterany:' + ':'.join(dep)
         else:
@@ -712,12 +684,6 @@ class SlurmRun(pydantic.BaseModel, Run):
                                 *[f'\t{quote(job.output_file.expanduser())} \\'
                                   for job in self.jobs],
                                 ')'])
-        job_dependencies = ''
-        if any([j.slurm_job_dependencies is not None for j in self.jobs]):
-            job_dependencies = '\n'.join(['JOB_DEPENDENCIES=(  \\',
-                                         *[f'\t--dependency={job.dependencies_str} \\'
-                                           for job in self.jobs],
-                                          ')'])
         return '\n'.join([
             # script header --------------------------------------------------------
             '#!/bin/bash',
@@ -736,8 +702,6 @@ class SlurmRun(pydantic.BaseModel, Run):
             'CMD=(  \\',
             *[f'\t{quote(job.cmd)}  \\' for job in self.jobs],
             ')',
-            # command dependency array ---------------------------------------------
-            f'{job_dependencies}',
             # working dir array ----------------------------------------------------
             'WORKINGDIR=(  \\',
             *[f'\t{quote(job.working_dir.expanduser())} \\' for job in self.jobs],
@@ -756,11 +720,8 @@ class SlurmRun(pydantic.BaseModel, Run):
                 (_START_TIME_, '$(date --rfc-3339=ns)'))],
             # start the job --------------------------------------------------------
             f'echo {_SRUN_START_}',
-            ' '.join([
-                'srun', *self.srun_options,
-                '${JOB_DEPENDENCIES[$SLURM_ARRAY_TASK_ID]}' if job_dependencies else '',
-                '${CMD[$SLURM_ARRAY_TASK_ID]}',
-                '> ${OUT[$SLURM_ARRAY_TASK_ID]}' if out_arr else '']),
+            ' '.join(['srun', *self.srun_options, '${CMD[$SLURM_ARRAY_TASK_ID]}',
+                      '> ${OUT[$SLURM_ARRAY_TASK_ID]}' if len(out_arr) > 0 else '']),
             f'echo {_SRUN_END_}',
             # job finished ---------------------------------------------------------
             f'echo {_END_TIME_:>18}: $(date --rfc-3339=ns)',
