@@ -218,10 +218,11 @@ class SlurmJob(pydantic.BaseModel, Job):
                 self.job_state = 'FAILED'
                 return Status.ERROR
             elif self.stdout_file is not None and self.stdout_file.exists():
-                lines = self.stdout_file.open().readlines()
-                if len(lines) > 0 and lines[-1].startswith('End time: '):
-                    self.job_state = 'COMPLETED'
-                    return Status.COMPLETED
+                with self.stdout_file.open() as fout:
+                    lines = fout.readlines()
+                    if len(lines) > 0 and lines[-1].startswith('End time: '):
+                        self.job_state = 'COMPLETED'
+                        return Status.COMPLETED
             # TODO: There are more edge cases here to handle but we don't have any examples yet
             return Status.NOTSET
         return Status.from_slurm_string(self.job_state)
