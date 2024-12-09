@@ -60,8 +60,8 @@ def add_to_queue(
         path: str | Path | list[str] | list[Path] | None = None,
         name: str | None = None,
         parallel_jobs: int = None,
-        dependencies: SlurmRun | list[SlurmRun] | None = None,
-        job_dependencies: list[SlurmRun | SlurmJob | None] | None = None,
+        dependencies: SlurmRun | list[SlurmRun | str] | None = None,
+        job_dependencies: list[SlurmRun | SlurmJob | str | None] | None = None,
         base_dir: str | Path = None,
         sbatch_options: list[str] = None,
         srun_options: list[str] = None,
@@ -93,9 +93,10 @@ def add_to_queue(
         parallel_jobs: int
             Number of jobs to run in parallel. If None (default) will be set to the
             amount of jobs created in this run.
-        dependencies: SlurmRun | list[SlurmRun] | None
+        dependencies: SlurmRun | str | list[SlurmRun | str] | None
             The command(s) will wait for all `dependencies` to finish before starting.
-        job_dependencies: list[SlurmJob | SlurmRun | None] | None
+            If string, assume it is the job ID.
+        job_dependencies: list[SlurmJob | SlurmRun | str | None] | None
             Per SlurmJob dependencies of the SlurmRun. Assumes length of cmd.
             If some jobs should be without dependency, leave None instead.
         sbatch_options: list[str]
@@ -129,7 +130,24 @@ def add_to_queue(
                   ' or equal to the number of commands.')
     if isinstance(dependencies, SlurmRun):
         dependencies = [dependencies]
-    if job_dependencies and len(job_dependencies) != len(cmd):
+    if not job_dependencies:
+        job_dependencies = [[]] * len(cmd)
+    else:
+        # Cast job dependencies to lists if required
+        for i, job in enumerate(job_dependencies):
+            if not isinstance(job, list):
+                if job is None:
+                    job_dependencies[i] = []
+                else:
+                    job_dependencies[i] = [job]
+            # Cast SlurmRun / SlurmJob to their IDs
+            for j, dependency in enumerate(job_dependencies[i]):
+                if isinstance(dependency, SlurmRun):
+                    job_dependencies[i][j] = dependency.run_id
+                elif isinstance(dependency, SlurmJob):
+                    job_dependencies[i][j] = dependency.slurm_job_id
+
+    if len(job_dependencies) != len(cmd):
         Log.error('The number of job dependencies should be equal to the number of '
                   'commands.')
 
@@ -150,13 +168,12 @@ def add_to_queue(
         name=name,
         base_dir=base_dir,
         dependencies=dependencies or [],
-        job_dependencies=job_dependencies or [],
         parallel_jobs=parallel_jobs,
         sbatch_options=sbatch_options or [],
         srun_options=srun_options or []
     )
-    for c, p, o in zip(cmd, path, output_path):
-        slurm_run.add_job(cmd=c, working_dir=p, output=o)
+    for c, p, o, d in zip(cmd, path, output_path, job_dependencies):
+        slurm_run.add_job(cmd=c, working_dir=p, output=o, slurm_job_dependencies=d)
     return slurm_run.submit()
 
 
@@ -194,8 +211,8 @@ class SlurmJob(pydantic.BaseModel, Job):
     slurm_job_id: str
         The Slurm ID of the job. This value is set by SlurmRun when
         the jobs are submitted to Slurm.
-    slurm_job_dependencies: list[SlurmRun | SlurmJob]
-        The list of SlurmRun or SlurmJob that this job wait on before starting.
+    slurm_job_dependencies: list[str]
+        The list of SlurmRun or SlurmJob ids that this job wait on before starting.
     '''
 
     cmd: str
@@ -204,7 +221,7 @@ class SlurmJob(pydantic.BaseModel, Job):
     stdout_file: Path = None
     stderr_file: Path = None
     slurm_job_id: str = None
-    slurm_job_dependencies: list[SlurmRun | SlurmJob] = None
+    slurm_job_dependencies: list[str] = []
 
     # Properties derived by SlurmRun parent
     job_state: str = None
@@ -307,17 +324,9 @@ class SlurmJob(pydantic.BaseModel, Job):
         return ''
 
     @property
-    def dependencies_str(self) -> str:
+    def dependency_str(self) -> str:
         '''Return the list of dependencies ids.'''
-        ids = []
-        for d in self.slurm_job_dependencies:
-            if isinstance(d, SlurmRun):
-                ids.append(d.run_id)
-            elif isinstance(d, SlurmJob):
-                ids.append(d.slurm_job_id)
-            elif isinstance(d, str):
-                ids.append(d)
-        return ','.join(ids)
+        return ':'.join(self.slurm_job_dependencies)
 
     @property
     def stdout(self) -> str:
@@ -461,7 +470,6 @@ class SlurmRun(pydantic.BaseModel, Run):
         for key in ['name', 'base_dir', 'dependencies']:
             if key in data and data[key] is None:
                 del data[key]
-
         super().__init__(**data)
         self.base_dir = self.base_dir.expanduser()
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -491,14 +499,14 @@ class SlurmRun(pydantic.BaseModel, Run):
             self.to_file()
 
     def add_job(self, cmd: str, working_dir: Path = None, output: Path = None,
-                job_dependencies: list[SlurmRun | SlurmJob] = []) -> None:
+                slurm_job_dependencies: list[str] = []) -> None:
         '''Add a job to the list of jobs. The name is created automatically.'''
         self.jobs.append(SlurmJob(
             cmd=cmd,
             working_dir=working_dir or self.base_dir,
             output_file=output,
-            name=self.name + f'-{len(self.jobs):04}'),
-            job_dependencies=job_dependencies)
+            name=self.name + f'-{len(self.jobs):04}',
+            slurm_job_dependencies=slurm_job_dependencies,))
 
     def submit(self) -> SlurmRun:
         '''Submit the run to the scheduler.'''
@@ -631,7 +639,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         dep = [sr.run_id if isinstance(sr, SlurmRun)
                else sr for sr in self.dependencies]
         if dep:
-            return 'afterany:' + ':'.join(dep)
+            return ':'.join(dep)
         else:
             return ''
 
@@ -713,11 +721,12 @@ class SlurmRun(pydantic.BaseModel, Run):
                                   for job in self.jobs],
                                 ')'])
         job_dependencies = ''
-        if any([j.slurm_job_dependencies is not None for j in self.jobs]):
-            job_dependencies = '\n'.join(['JOB_DEPENDENCIES=(  \\',
-                                         *[f'\t--dependency={job.dependencies_str} \\'
-                                           for job in self.jobs],
-                                          ')'])
+        if any([j.slurm_job_dependencies != [] for j in self.jobs]):
+            job_dependencies = '\n'.join(
+                ['JOB_DEPENDENCIES=(  \\',
+                 *[f'\t--dependency=afterany:{job.dependency_str} \\'
+                   for job in self.jobs],
+                 ')'])
         return '\n'.join([
             # script header --------------------------------------------------------
             '#!/bin/bash',
@@ -730,7 +739,8 @@ class SlurmRun(pydantic.BaseModel, Run):
             f'#SBATCH --array=0-{len(self)-1}%{self.parallel_jobs}',
             f"#SBATCH --output={quote(self.filepath('-%4a.out'))}",
             f"#SBATCH --error={quote(self.filepath('-%4a.err'))}",
-            f'#SBATCH --dependency={self.dependency_str}',
+            '#SBATCH --dependency=afterany:'
+            f'{self.dependency_str}' if self.dependencies else '',
             '',
             # command array -------------------------------------------------------
             'CMD=(  \\',
