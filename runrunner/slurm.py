@@ -507,7 +507,7 @@ class SlurmRun(pydantic.BaseModel, Run):
         '''
         # Convert to a str so the suffix can be whatever we want
         name = self.name.replace(' ', '_') if replace_whitespace else self.name
-        return (self.base_dir / name).with_suffix(suffix)
+        return (self.base_dir / (name + suffix))
 
     @classmethod
     def from_file(cls, file: Path, load_dependencies: bool = False) -> SlurmRun:
