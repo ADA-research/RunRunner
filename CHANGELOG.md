@@ -2,6 +2,12 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.1.9] 2024/12/20
+
+### Added
+
+- Replace white space option for naming Slurm run files
+
 ## [0.1.8] 2024/10/28
 
 ### Fixed

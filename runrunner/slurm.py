@@ -500,13 +500,14 @@ class SlurmRun(pydantic.BaseModel, Run):
             Log.info(f'Submitted a run to Slurm (job {self.run_id})')
         return self
 
-    def filepath(self, suffix: str = '') -> Path:
+    def filepath(self, suffix: str = '', replace_whitespace: bool = True) -> Path:
         '''Get a Path to a file inside the base_dir.
 
         The Path is formed with the run name and an optional suffix.
         '''
         # Convert to a str so the suffix can be whatever we want
-        return Path(str(self.base_dir / self.name) + suffix)
+        name = self.name.replace(' ', '_') if replace_whitespace else self.name
+        return (self.base_dir / name).with_suffix(suffix)
 
     @classmethod
     def from_file(cls, file: Path, load_dependencies: bool = False) -> SlurmRun:
