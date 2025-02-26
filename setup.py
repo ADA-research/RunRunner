@@ -4,8 +4,8 @@ import os
 
 setup(
     name='RunRunner',
-    version='0.1.9.1',
-    url='https://github.com/thijssnelleman/RunRunner',
+    version='0.1.2.0',
+    url='https://github.com/ADA-research/RunRunner',
     author='Thijs Snelleman',
     author_email='fkt_sparkle@aim.rwth-aachen.de',
     description='RunRunner is a wrapper library for creating and managing subprocesses '
