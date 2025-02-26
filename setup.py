@@ -4,7 +4,7 @@ import os
 
 setup(
     name='RunRunner',
-    version='0.1.2.0',
+    version='0.2.0',
     url='https://github.com/ADA-research/RunRunner',
     author='Thijs Snelleman',
     author_email='fkt_sparkle@aim.rwth-aachen.de',
