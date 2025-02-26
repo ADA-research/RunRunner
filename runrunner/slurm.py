@@ -158,7 +158,7 @@ def add_to_queue(
         parallel_jobs=parallel_jobs,
         sbatch_options=sbatch_options or [],
         srun_options=srun_options or [],
-        prepend=prepend,
+        prepend=prepend or "",
     )
     for c, p, o in zip(cmd, path, output_path):
         slurm_run.add_job(cmd=c, working_dir=p, output=o)
@@ -440,7 +440,7 @@ class SlurmRun(pydantic.BaseModel, Run):
     parallel_jobs: int = 1
     submitted: bool = False
     run_id: str = None
-    prepend: str = None,
+    prepend: str = "",
 
     # Not saved in the json
     loaded_from_file: bool = Field(False, exclude=True)
