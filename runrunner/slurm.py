@@ -139,7 +139,8 @@ def add_to_queue(
         if len(array_options) > 0:
             if len(array_options) > 1:
                 Log.warn('Detected multiple array specifications in '
-                      f' SlurmRun Sbatch Options list for job {name}. Selecting first.')
+                         f'SlurmRun Sbatch Options list for job {name}. '
+                         'Selecting first.')
             parallel_jobs = int(array_options[0][1])
     if parallel_jobs is None:
         parallel_jobs = len(cmd)
@@ -235,7 +236,8 @@ class SlurmJob(pydantic.BaseModel, Job):
                     if len(lines) > 0 and lines[-1].startswith('End time: '):
                         self.job_state = 'COMPLETED'
                         return Status.COMPLETED
-            # TODO: There are more edge cases here to handle but we don't have any examples yet
+            # TODO: There are more edge cases here to handle
+            # but we don't have any examples yet
             return Status.NOTSET
         return Status.from_slurm_string(self.job_state)
 
@@ -380,9 +382,9 @@ class SlurmJob(pydantic.BaseModel, Job):
         self.job_qos = job_info['qos']
         self.job_partition = job_info['partition']
         if ('job_resources' in job_info and 'allocated_nodes'
-            in job_info['job_resources']):
+                in job_info['job_resources']):
             self.job_nodes = ','.join(
-                node_info['nodename'] 
+                node_info['nodename']
                 for node_info in job_info['job_resources']['allocated_nodes'])
         return self
 
@@ -470,7 +472,7 @@ class SlurmRun(pydantic.BaseModel, Run):
                 match = _regex_slurmrun_name_.findall('\n'.join(names))
                 value = max([int(m[1]) for m in match]) if match else 0
 
-                new_name = f'{base_name}-{value+1:0{number_of_digits}}'
+                new_name = f'{base_name}-{value + 1:0{number_of_digits}}'
 
                 Log.info('Script file with the same name detected. '
                          f'Using a new unique name: {self.name} -> {new_name}')
@@ -707,7 +709,7 @@ class SlurmRun(pydantic.BaseModel, Run):
             '',
             # sbatch options -------------------------------------------------------
             *[f'#SBATCH {option}' for option in self.sbatch_options],
-            f'#SBATCH --array=0-{len(self)-1}%{self.parallel_jobs}',
+            f'#SBATCH --array=0-{len(self) - 1}%{self.parallel_jobs}',
             f"#SBATCH --output={quote(self.filepath('-%4a.out'))}",
             f"#SBATCH --error={quote(self.filepath('-%4a.err'))}",
             f'#SBATCH --dependency={self.dependency_str}',

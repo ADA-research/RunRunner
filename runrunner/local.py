@@ -92,7 +92,7 @@ def add_to_queue(
         # appended with a number. For example, for a run named runA with 12
         # jobs: [runA_01, runA_02, ..., runA_12]
         n = ceil(log10(len(cmd) + 1))  # For a correct number of leading 0
-        names = [f'{name}_{i+1:0{n}}' for i in range(len(cmd))]
+        names = [f'{name}_{i + 1:0{n}}' for i in range(len(cmd))]
 
     # Cast outputs to list
     if not isinstance(stdout, list):
