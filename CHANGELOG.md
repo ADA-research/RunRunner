@@ -2,6 +2,12 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.2.0] 2025/02/26
+
+### Added
+
+- Added posibility to prepend slurm scripts with some code (SlurmRun)
+
 ## [0.1.9] 2024/12/20
 
 ### Added

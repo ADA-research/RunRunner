@@ -65,6 +65,7 @@ def add_to_queue(
         sbatch_options: list[str] = None,
         srun_options: list[str] = None,
         output_path: str | Path | list[str] | list[Path] | None = None,
+        prepend: str | list[str] | Path | None = None,
         **kwargs: str
 
 ) -> SlurmRun:
@@ -105,6 +106,10 @@ def add_to_queue(
             parameters is a single value, this value will be used for all the cmd. If
             path is a list, the length of the list must be the same as the number of
             commands. If None, use the default Slurm .out file of the sbatch script.
+        prepend: str | list[str] | Path | None
+            Script that should be prepended to each job to be executed. Usually relevant
+            when the compute cluster requires certain variables / modules to be loaded
+            regarding environment set up.
     Returns
     -------
         slurm_run: SlurmRun
@@ -139,13 +144,20 @@ def add_to_queue(
     if parallel_jobs is None:
         parallel_jobs = len(cmd)
 
+    if prepend:
+        if isinstance(prepend, Path):
+            prepend = prepend.open().read()
+        elif isinstance(prepend, list):
+            prepend = "\n".join(prepend)
+
     slurm_run = SlurmRun(
         name=name,
         base_dir=base_dir,
         dependencies=dependencies or [],
         parallel_jobs=parallel_jobs,
         sbatch_options=sbatch_options or [],
-        srun_options=srun_options or []
+        srun_options=srun_options or [],
+        prepend=prepend,
     )
     for c, p, o in zip(cmd, path, output_path):
         slurm_run.add_job(cmd=c, working_dir=p, output=o)
@@ -426,6 +438,7 @@ class SlurmRun(pydantic.BaseModel, Run):
     parallel_jobs: int = 1
     submitted: bool = False
     run_id: str = None
+    prepend: str = None,
 
     # Not saved in the json
     loaded_from_file: bool = Field(False, exclude=True)
@@ -719,6 +732,8 @@ class SlurmRun(pydantic.BaseModel, Run):
                 ('Working directory', '$(pwd)'),
                 ('Command', '${CMD[$SLURM_ARRAY_TASK_ID]}'),
                 (_START_TIME_, '$(date --rfc-3339=ns)'))],
+            # Possibly prepend the job with some script
+            f'\n{self.prepend}\n' if self.prepend else '',
             # start the job --------------------------------------------------------
             f'echo {_SRUN_START_}',
             ' '.join(['srun', *self.srun_options, '${CMD[$SLURM_ARRAY_TASK_ID]}',
