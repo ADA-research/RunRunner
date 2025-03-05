@@ -2,6 +2,12 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.2.0.2] 2025/03/05
+
+### Fixed
+
+- Fixed bug for local job output piping.
+
 ## [0.2.0.1] 2025/02/26
 
 ### Fixed

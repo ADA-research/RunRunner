@@ -44,8 +44,8 @@ def add_to_queue(
     path: str | Path | None = None,
     name: str | None = None,
     parallel_jobs: int = 1,
-    stdout: Path | list[Path] | None = None,
-    stderr: Path | list[Path] | None = None,
+    stdout: Path | list[Path] | None = subprocess.PIPE,
+    stderr: Path | list[Path] | None = subprocess.PIPE,
     start_now: bool = True,
     dependencies: LocalJob | list[LocalJob] | LocalRun | list[LocalRun] | None = None,
     **kwargs: str
@@ -210,16 +210,16 @@ class LocalJob(Job):
     @property
     def stdout_target(self) -> any:
         '''Return the standard output stream.'''
-        if self._stdout_target is None:
-            return subprocess.PIPE
-        return self._stdout_target.open('a')
+        if isinstance(self._stdout_target, Path):
+            return self._stdout_target.open('a')
+        return self._stdout_target
 
     @property
     def stderr_target(self) -> any:
         '''Return the standard error stream.'''
-        if self._stderr_target is None:
-            return subprocess.PIPE
-        return self._stderr_target.open('a')
+        if isinstance(self._stderr_target, Path):
+            return self._stderr_target.open('a')
+        return self._stderr_target
 
     def run(self) -> LocalJob:
         '''Execute the job.'''
