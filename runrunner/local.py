@@ -278,14 +278,14 @@ class LocalJob(Job):
     @property
     def stdout(self) -> str:
         '''Return the standard output stream.'''
-        if self._stdout_target is not None:
+        if isinstance(self._stdout_target, Path):
             return self._stdout_target.read_text()
         return self._process.stdout.read().decode()
 
     @property
     def stderr(self) -> str:
         '''Return the standard error stream.'''
-        if self._stderr_target is not None:
+        if isinstance(self._stderr_target, Path):
             return self._stderr_target.read_text()
         return self._process.stderr.read().decode()
 

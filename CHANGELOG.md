@@ -2,7 +2,7 @@
 
 Notable changes to RunRunner are documented in this file.
 
-## [0.2.0.2] 2025/03/05
+## [0.2.0.3] 2025/03/05
 
 ### Fixed
 
