@@ -2,6 +2,12 @@
 
 Notable changes to RunRunner are documented in this file.
 
+## [0.2.0.4] 2025/10/07
+
+### Fixed
+
+- Added fix to default parallel jobs for local runs to revert to 1 if value of 0 or lower is specified.
+
 ## [0.2.0.3] 2025/03/05
 
 ### Fixed

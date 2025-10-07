@@ -69,6 +69,7 @@ def add_to_queue(
             The path to the standard error file. If None, stderr is send to PIPE
         parallel_jobs: int
             Number of jobs to run in parallel. By default, run on one thread (serial).
+            If zero or lower is specified, defaults back to 1.
         dependencies: LocalRun | list[LocalRun] | LocalJob | list[LocalJob] | None
             The command(s) will wait for all `dependencies` to finish before starting.
     Returns
@@ -93,6 +94,9 @@ def add_to_queue(
         # jobs: [runA_01, runA_02, ..., runA_12]
         n = ceil(log10(len(cmd) + 1))  # For a correct number of leading 0
         names = [f'{name}_{i + 1:0{n}}' for i in range(len(cmd))]
+
+    # Make sure we can run atleast one job at a time
+    parallel_jobs = max(1, parallel_jobs)
 
     # Cast outputs to list
     if not isinstance(stdout, list):
